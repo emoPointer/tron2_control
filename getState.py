@@ -1,4 +1,3 @@
-# 文件名: getState_server.py
 import sys
 import time
 import threading
@@ -20,13 +19,10 @@ AUTH_KEY = b'tron2_secret_key' # 一个简单的认证密钥
 
 class RobotReceiver:
     def robotStateCallback(self, robot_state: datatypes.RobotState):
-        """回调函数：获取状态并存入全局变量"""
         global LATEST_ROBOT_STATE
         with STATE_LOCK:
             LATEST_ROBOT_STATE = robot_state
-        # 为了确认回调在工作，我们可以每秒打印一次时间戳
-        # if int(time.time()) % 2 == 0: 
-        #    logging.info(f"Callback received state with stamp: {robot_state.stamp}")
+        # logging.debug(f"收到新的机器人状态: stamp={robot_state.stamp}, q={robot_state.q[:14]}..., dq={robot_state.dq[:14]}...")
 
 
 def run_robot_subscription(robot_ip):
