@@ -23,8 +23,8 @@ class RobotConfig:
     left_wrist_camera_serial: str = "230322270826"  # TODO: 替换为左手腕相机的真实序列号
     right_wrist_camera_serial: str = "230422272089" # TODO: 替换为右手腕相机的真实序列号
     head_camera_serial: str = "343622300603"        # TODO: 替换为头部相机
-    left_wrist_camera: bool = False
-    right_wrist_camera: bool = False
+    left_wrist_camera: bool = True
+    right_wrist_camera: bool = True
     head_camera: bool = True
 
 
