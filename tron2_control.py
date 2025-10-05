@@ -1,3 +1,4 @@
+from functools import partial
 import sys
 import threading
 import time
@@ -6,10 +7,12 @@ import uuid
 import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Iterator
+import limxsdk.robot.Robot as Robot
+import limxsdk.robot.RobotType as RobotType
+import limxsdk.datatypes as datatypes
 
 import numpy
 import websocket
-import limxsdk.datatypes as datatypes
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [CLIENT] - %(levelname)s - %(message)s')
 
@@ -28,6 +31,14 @@ class RobotConfig:
     head_camera: bool = True
     execution_time: float = 2
 
+
+global ROBOTSTATE
+ROBOTSTATE = None
+
+class RobotReceiver:
+    def robotStateCallback(self, robot_state: datatypes.RobotState):
+        global ROBOTSTATE
+        ROBOTSTATE = robot_state
 
 class WebSocketManager:
     def __init__(self, ip_address: str):
@@ -93,9 +104,9 @@ class MoveJSequence:
         self.policy_inference_result = policy_inference_result
         self.current_step = 0
         
-        expected_shape = (config.control_horizon, config.action_dim)
-        if policy_inference_result.shape != expected_shape:
-            raise ValueError(f"期望 policy_inference_result 的形状为 {expected_shape}, 但得到 {policy_inference_result.shape}")
+        # expected_shape = (config.control_horizon, config.action_dim)
+        # if policy_inference_result.shape != expected_shape:
+        #     raise ValueError(f"期望 policy_inference_result 的形状为 {expected_shape}, 但得到 {policy_inference_result.shape}")
 
     def __iter__(self) -> Iterator[Dict[str, Any]]:
         self.current_step = 0
@@ -130,16 +141,22 @@ class MoveJSequence:
 
 class Tron2:
     def __init__(self, config: RobotConfig):
+        
         self.config = config
         self.ws_manager = WebSocketManager(config.ip_address)
-        
+        self.robot = Robot(RobotType.Tron2)
+        self.robot.init(config.ip_address)
+        self.robot_receiver = RobotReceiver()
+        self.robotStateCallback = partial(self.robot_receiver.robotStateCallback)
+        self.robot.subscribeRobotState(self.robotStateCallback)
+
         while not self.ws_manager.is_connected:
             time.sleep(0.5)
         
         logging.info("机器人控制实例创建成功！")
 
-    def get_state(self) -> Dict[str, Any]:
-        return self.ws_manager.get_latest_state()
+    def get_state(self):
+        return ROBOTSTATE
     
     # def control(self, movej_sequence: MoveJSequence):
     #     try:
@@ -181,31 +198,33 @@ class Tron2:
         self.ws_manager.send_command(command)
 
 
-# 流程就是首先实例化Tron2，通过策略获取动作序列，然后执行MoveJSequence，然后执行control方法
+# 流程就是首先实例化Tron2，通过策略获取动作序列，然后执行control方法
 if __name__ == '__main__':
     robot_config = RobotConfig()
     tron2_controller = Tron2(robot_config)
-    logging.info("设置灯效为静态绿光...")
-    tron2_controller.set_robot_light(datatypes.LightEffect.STATIC_GREEN)
+    logging.info("测试灯光，设置灯效为高频绿光...")
+    tron2_controller.set_robot_light(datatypes.LightEffect.FAST_FLASH_GREEN)
     time.sleep(2)
 
-    logging.info("准备执行一个动作序列...")
-    dummy_policy_output = numpy.random.uniform(low=-0.2, high=0.2, size=(robot_config.control_horizon, robot_config.action_dim))
+    logging.info("测试控制")
+    dummy_policy_output = numpy.array([
+        [-0.5, 0.3, -0.2, 0.2, 0.2, 0.2, 0.2, -0.5, -0.3, -0.2, 0.2, 0.2, 0.2, 0.2],
+        [0.106, 0.0414, -0.0462, -0.149, 0.02, 0.11, 0.018, 0.071, -0.035, 0.147, -0.0974, 0.08, 0.23, -0.007],
+        [-0.5, 0.3, -0.2, 0.2, 0.2, 0.2, 0.2, -0.5, -0.3, -0.2, 0.2, 0.2, 0.2, 0.2],
+        [0.106, 0.0414, -0.0462, -0.149, 0.02, 0.11, 0.018, 0.071, -0.035, 0.147, -0.0974, 0.08, 0.23, -0.007],
+    ])
 
-    logging.info("开始执行控制序列...")
     tron2_controller.control(dummy_policy_output)
     logging.info("控制序列执行完毕。")
     
     time.sleep(2)
 
-    logging.info("获取机器人当前状态...")
+    logging.info("测试状态获取")
     current_state = tron2_controller.get_state()
     if current_state:
         logging.info(f"获取到机器人状态: {current_state}")
+        print(f"Current joint positions (q): {current_state.q[:14]}")
     else:
         logging.warning("未能获取到机器人状态。")
-        
-    logging.info("设置灯效为慢闪红色...")
-    tron2_controller.set_robot_light(datatypes.LightEffect.LOW_FLASH_RED)
-    
-    logging.info("示例程序结束。")
+
+    logging.info("测试程序结束。")

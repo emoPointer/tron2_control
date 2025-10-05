@@ -20,6 +20,7 @@ AUTH_KEY = b'tron2_secret_key' # 一个简单的认证密钥
 class RobotReceiver:
     def robotStateCallback(self, robot_state: datatypes.RobotState):
         global LATEST_ROBOT_STATE
+        print(f"Received robot state: stamp={robot_state.stamp}, q={robot_state.q[:14]}..., dq={robot_state.dq[:14]}...")
         with STATE_LOCK:
             LATEST_ROBOT_STATE = robot_state
         # logging.debug(f"收到新的机器人状态: stamp={robot_state.stamp}, q={robot_state.q[:14]}..., dq={robot_state.dq[:14]}...")
