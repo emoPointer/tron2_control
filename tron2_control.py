@@ -26,6 +26,7 @@ class RobotConfig:
     left_wrist_camera: bool = True
     right_wrist_camera: bool = True
     head_camera: bool = True
+    execution_time: float = 2
 
 
 class WebSocketManager:
@@ -121,8 +122,7 @@ class MoveJSequence:
             "timestamp": int(time.time() * 1000),
             "guid": str(uuid.uuid4()),
             "data": {
-                # "time": 1.0 / self.config.control_rate,
-                "time": 3,  # 逻辑有问题，但是直接使用控制频率太快会很危险
+                "time": self.config.execution_time,
                 "joint": current_action.tolist() # 14 joint values in radians
             }
         }
@@ -141,11 +141,20 @@ class Tron2:
     def get_state(self) -> Dict[str, Any]:
         return self.ws_manager.get_latest_state()
     
-    def control(self, movej_sequence: MoveJSequence):
+    # def control(self, movej_sequence: MoveJSequence):
+    #     try:
+    #         for cmd in movej_sequence:
+    #             self.ws_manager.send_command(cmd)
+    #             time.sleep(1.0 / self.config.control_rate)
+    #     except Exception as e:
+    #         logging.error(f"发送控制序列失败: {e}")
+    
+    def control(self, policy_inference_result: numpy.ndarray):
         try:
+            movej_sequence = MoveJSequence(self.config, policy_inference_result)
             for cmd in movej_sequence:
                 self.ws_manager.send_command(cmd)
-                time.sleep(1.0 / self.config.control_rate)
+                time.sleep(self.config.execution_time)
         except Exception as e:
             logging.error(f"发送控制序列失败: {e}")
     
@@ -153,6 +162,7 @@ class Tron2:
         try:
             cmd = movej_sequence.get_single_cmd(step)
             self.ws_manager.send_command(cmd)
+            time.sleep(self.config.execution_time)
         except Exception as e:
             logging.error(f"发送单步控制指令失败: {e}")
 
@@ -181,11 +191,9 @@ if __name__ == '__main__':
 
     logging.info("准备执行一个动作序列...")
     dummy_policy_output = numpy.random.uniform(low=-0.2, high=0.2, size=(robot_config.control_horizon, robot_config.action_dim))
-    
-    action_sequence = MoveJSequence(robot_config, dummy_policy_output)
-    print(action_sequence)
+
     logging.info("开始执行控制序列...")
-    tron2_controller.control(action_sequence)
+    tron2_controller.control(dummy_policy_output)
     logging.info("控制序列执行完毕。")
     
     time.sleep(2)
