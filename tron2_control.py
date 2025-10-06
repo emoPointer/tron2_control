@@ -174,7 +174,49 @@ class Tron2:
                 time.sleep(self.config.execution_time)
         except Exception as e:
             logging.error(f"发送控制序列失败: {e}")
-    
+
+    def control_velocity(self, velocity_sequence: numpy.ndarray, dt: float = None):
+        try:
+            velocity_sequence = numpy.asarray(velocity_sequence, dtype=float)
+
+            if velocity_sequence.ndim != 2 or velocity_sequence.shape[1] != self.config.action_dim:
+                logging.error(f"期望速度输入形状为 (T, {self.config.action_dim}), 实际为 {velocity_sequence.shape}")
+                return
+
+            if velocity_sequence.shape[0] == 0:
+                logging.warning("速度序列为空，未发送任何指令。")
+                return
+
+            dt = dt if dt is not None else 0.1
+            if dt <= 0:
+                logging.error("dt 必须为正数，速度控制终止。")
+                return
+
+            robot_state = self.get_state()
+            if robot_state is None:
+                logging.error("无法获取机器人当前状态，速度控制终止。")
+                return
+
+            current_joint_positions = getattr(robot_state, "q", None)
+            if current_joint_positions is None or len(current_joint_positions) < self.config.action_dim:
+                logging.error("机器人状态中缺少有效的关节位置，速度控制终止。")
+                return
+
+            current_q = numpy.array(current_joint_positions[:self.config.action_dim], dtype=float)
+            position_sequence = numpy.empty_like(velocity_sequence)
+
+            for idx, dq in enumerate(velocity_sequence):
+                current_q = current_q + dq * dt
+                position_sequence[idx] = current_q
+
+            movej_sequence = MoveJSequence(self.config, position_sequence)
+
+            for cmd in movej_sequence:
+                self.ws_manager.send_command(cmd)
+                time.sleep(dt)
+        except Exception as e:
+            logging.error(f"发送速度控制序列失败: {e}")
+
     def control_single_step(self, movej_sequence: MoveJSequence, step: int = 0):
         try:
             cmd = movej_sequence.get_single_cmd(step)
@@ -206,17 +248,32 @@ if __name__ == '__main__':
     tron2_controller.set_robot_light(datatypes.LightEffect.FAST_FLASH_GREEN)
     time.sleep(2)
 
-    logging.info("测试控制")
+    logging.info("测试速度控制")
+    # 生成一个简单的速度序列，持续5步，每步每个关节速度为0.01
+    velocity_steps = 5
+    velocity_value = 0.01
+    dummy_velocity = numpy.full((velocity_steps, robot_config.action_dim), velocity_value, dtype=float)
+    dummy_velocity = numpy.array([
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -0.1],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -0.1],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -0.1],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -0.1],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -0.1],
+    ])
+    tron2_controller.control_velocity(dummy_velocity, dt=1)
+    logging.info("速度控制序列执行完毕。")
+    time.sleep(2)
+
+
+    logging.info("测试绝对位置控制")
     dummy_policy_output = numpy.array([
         [-0.5, 0.3, -0.2, 0.2, 0.2, 0.2, 0.2, -0.5, -0.3, -0.2, 0.2, 0.2, 0.2, 0.2],
         [0.106, 0.0414, -0.0462, -0.149, 0.02, 0.11, 0.018, 0.071, -0.035, 0.147, -0.0974, 0.08, 0.23, -0.007],
         [-0.5, 0.3, -0.2, 0.2, 0.2, 0.2, 0.2, -0.5, -0.3, -0.2, 0.2, 0.2, 0.2, 0.2],
         [0.106, 0.0414, -0.0462, -0.149, 0.02, 0.11, 0.018, 0.071, -0.035, 0.147, -0.0974, 0.08, 0.23, -0.007],
     ])
-
     tron2_controller.control(dummy_policy_output)
-    logging.info("控制序列执行完毕。")
-    
+    logging.info("绝对位置控制序列执行完毕。")
     time.sleep(2)
 
     logging.info("测试状态获取")
